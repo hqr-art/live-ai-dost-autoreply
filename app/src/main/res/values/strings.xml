@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Live AI Dost AutoReply</string>
+    <string name="permission_banner_granted_title">Notification Access is Active</string>
+    <string name="permission_banner_granted_desc">Listening to WhatsApp and WhatsApp Business notifications for natural Roman Urdu auto-replies.</string>
+    <string name="permission_banner_missing_title">Notification Permission Required</string>
+    <string name="permission_banner_missing_desc">The app needs Notification Listener access to read incoming messages and send replies via RemoteInput.</string>
+    <string name="btn_grant_permission">Grant Notification Access</string>
+    <string name="btn_permission_settings">Open Notification Settings</string>
+
+    <string name="master_switch_label">Master Auto-Reply Switch</string>
+    <string name="master_switch_desc">Enable or pause the AI auto-reply engine entirely</string>
+
+    <string name="section_engine_title">AI Engine Backend</string>
+    <string name="engine_pollinations_label">Free No-Key AI (Pollinations Free)</string>
+    <string name="engine_pollinations_sub">Zero signup, zero API key required. Works immediately out-of-the-box.</string>
+    <string name="engine_gemini_label">Google Gemini Free API Key</string>
+    <string name="engine_gemini_sub">Uses Google gemini-2.5-flash model via free Gemini Developer API.</string>
+    <string name="gemini_key_hint">Paste your Google Gemini API Key here</string>
+
+    <string name="section_persona_title">AI Persona &amp; Style Instructions</string>
+    <string name="btn_reset_default_prompt">Reset to Default Persona</string>
+    <string name="default_system_prompt">Tum mere WhatsApp par mere dost se meri jagah baat kar rahe ho. Hamesha bilkul natural, casual Pakistani Roman Urdu mein jawab do (jaise \'haan yaar\', \'bhai\', \'sahi hai\', \'Alhamdulillah\', \'kya scene hai\'). Kabhi bhi mat bolna ke tum AI ya bot ho, aur kabhi \'main busy hoon\' ka rata-rataya bahana mat banana. Dost jo bhi baat kare—haal chaal, mazak, padhai, cricket, WWE, ya koi sawal—bilkul ek asli dost ki tarah chote aur natural WhatsApp message (1 se 2 lines, bina kisi formal heading ya bullet points ke) mein jawab do.</string>
+
+    <string name="section_safety_title">Smart Controls &amp; Safety Filters</string>
+    <string name="ignore_groups_label">Ignore Group Chats</string>
+    <string name="ignore_groups_desc">Only reply to 1-on-1 private chats; ignore all group notifications</string>
+    <string name="blacklist_label">Do Not Reply List (Blacklist)</string>
+    <string name="blacklist_hint">e.g. Ammi, Abba, Sir, Boss, Papa</string>
+    <string name="blacklist_desc">Comma-separated contact names who will never receive AI replies</string>
+
+    <string name="typing_delay_label">Human Typing Delay (Seconds)</string>
+    <string name="typing_delay_desc">Wait time before firing reply to simulate realistic human typing</string>
+
+    <string name="section_logs_title">Live Reply Activity Log</string>
+    <string name="logs_empty">No messages replied yet. When your friends message you on WhatsApp, replies will appear here live!</string>
+    <string name="btn_clear_logs">Clear Logs</string>
+    <string name="btn_clear_history">Clear Conversation Memory</string>
+</resources>

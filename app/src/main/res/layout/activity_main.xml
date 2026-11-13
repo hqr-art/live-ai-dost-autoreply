@@ -242,7 +242,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="32dp"
-                            android:text="Uses Google Gemini 1.5 / 2.0 Flash with auto-fallback to Pollinations if quota runs out."
+                            android:text="Uses Google Gemini 3.8 Flash with auto-recovery to Pollinations if quota runs out."
                             android:textColor="@color/text_secondary"
                             android:textSize="12sp" />
                     </RadioGroup>

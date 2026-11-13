@@ -53,7 +53,7 @@ class AiChatEngine(private val appSettings: AppSettings) {
                 val duration = System.currentTimeMillis() - startTime
                 return AiGenerationResult(
                     reply = reply,
-                    engineUsed = "Gemini 1.5/2.0",
+                    engineUsed = "Gemini 3.8/2.0",
                     durationMs = duration,
                     isSuccess = true
                 )
@@ -174,33 +174,46 @@ class AiChatEngine(private val appSettings: AppSettings) {
             Log.w(TAG, "Pollinations POST failed, trying GET fallback...", e)
         }
 
-        return callPollinationsGetFallback(systemPrompt, history, incomingMessage)
+        return callPollinationsTextPostFallback(systemPrompt, history, incomingMessage)
     }
 
-    private fun callPollinationsGetFallback(
+    private fun callPollinationsTextPostFallback(
         systemPrompt: String,
         history: List<MemoryMessage>,
         incomingMessage: String
     ): String {
-        val historyContext = buildString {
-            if (history.isNotEmpty()) {
-                append("\nRecent conversation:")
-                for (h in history.takeLast(4)) {
-                    val tag = if (h.role == "assistant") "Me" else "Friend"
-                    append("\n$tag: ${h.content}")
+        val messagesArray = JSONArray()
+
+        val sysObj = JSONObject().apply {
+            put("role", "system")
+            put("content", systemPrompt)
+        }
+        messagesArray.put(sysObj)
+
+        for (msg in history.takeLast(6)) {
+            if (msg.content.isNotBlank()) {
+                val m = JSONObject().apply {
+                    put("role", if (msg.role == "assistant") "assistant" else "user")
+                    put("content", msg.content)
                 }
-                append("\n")
+                messagesArray.put(m)
             }
-            append("\nFriend: $incomingMessage\nYour natural Pakistani Roman Urdu reply:")
         }
 
-        val fullPrompt = "$systemPrompt\n$historyContext"
-        val encodedPrompt = URLEncoder.encode(fullPrompt, StandardCharsets.UTF_8.name())
-        val url = "https://text.pollinations.ai/$encodedPrompt?model=openai"
+        val curUser = JSONObject().apply {
+            put("role", "user")
+            put("content", incomingMessage)
+        }
+        messagesArray.put(curUser)
+
+        val payload = JSONObject().apply {
+            put("messages", messagesArray)
+            put("model", "openai")
+        }
 
         val request = Request.Builder()
-            .url(url)
-            .get()
+            .url("https://text.pollinations.ai/")
+            .post(payload.toString().toRequestBody(JSON_MEDIA))
             .header("User-Agent", "LiveAiDostAutoReply/1.0")
             .build()
 
@@ -211,12 +224,12 @@ class AiChatEngine(private val appSettings: AppSettings) {
                     return sanitizeReply(raw)
                 }
             }
-            throw IllegalStateException("Pollinations HTTP ${response.code}: ${response.message}")
+            throw IllegalStateException("Pollinations fallback HTTP ${response.code}: ${response.message}")
         }
     }
 
     /**
-     * Mode B: Google Gemini Endpoint with multi-model fallback (gemini-1.5-flash -> gemini-2.0-flash)
+     * Mode B: Google Gemini Endpoint with gemini-3.8-flash as primary
      */
     private fun callGemini(
         apiKey: String,
@@ -224,7 +237,7 @@ class AiChatEngine(private val appSettings: AppSettings) {
         history: List<MemoryMessage>,
         incomingMessage: String
     ): String {
-        val models = listOf("gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash")
+        val models = listOf("gemini-3.8-flash", "gemini-2.0-flash", "gemini-1.5-flash")
         var lastException: Exception? = null
 
         for (model in models) {

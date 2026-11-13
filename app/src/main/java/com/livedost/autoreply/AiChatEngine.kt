@@ -11,12 +11,21 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 
+data class AiGenerationResult(
+    val reply: String,
+    val engineUsed: String,
+    val durationMs: Long,
+    val isSuccess: Boolean = true,
+    val errorDetails: String? = null
+)
+
 class AiChatEngine(private val appSettings: AppSettings) {
 
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     companion object {
@@ -25,33 +34,82 @@ class AiChatEngine(private val appSettings: AppSettings) {
     }
 
     /**
-     * Generate real-time conversational response in Roman Urdu.
-     * Takes sender name, incoming message text, and rolling conversation history.
+     * Generate real-time conversational response in Roman Urdu with detailed performance metadata.
      */
-    suspend fun generateReply(
+    suspend fun generateReplyWithDetails(
         sender: String,
         incomingMessage: String,
-        history: List<MemoryMessage>
-    ): String {
+        history: List<MemoryMessage>,
+        forcePollinations: Boolean = false
+    ): AiGenerationResult {
+        val startTime = System.currentTimeMillis()
         val systemPrompt = appSettings.systemPrompt.ifBlank { AppSettings.DEFAULT_SYSTEM_PROMPT }
-        val engine = appSettings.aiEngine
+        val engine = if (forcePollinations) AppSettings.ENGINE_POLLINATIONS else appSettings.aiEngine
         val geminiKey = appSettings.geminiApiKey
 
-        return if (engine == AppSettings.ENGINE_GEMINI && geminiKey.isNotBlank()) {
+        if (engine == AppSettings.ENGINE_GEMINI && geminiKey.isNotBlank()) {
             try {
-                callGemini(geminiKey, systemPrompt, history, incomingMessage)
+                val reply = callGemini(geminiKey, systemPrompt, history, incomingMessage)
+                val duration = System.currentTimeMillis() - startTime
+                return AiGenerationResult(
+                    reply = reply,
+                    engineUsed = "Gemini 1.5/2.0",
+                    durationMs = duration,
+                    isSuccess = true
+                )
             } catch (e: Exception) {
-                Log.e(TAG, "Gemini API failed, falling back to Pollinations Free AI", e)
-                callPollinations(systemPrompt, history, incomingMessage)
+                val geminiError = e.message ?: "Unknown Gemini error"
+                Log.w(TAG, "Gemini failed: $geminiError. Falling back to Pollinations Free AI...", e)
+                try {
+                    val fallbackReply = callPollinations(systemPrompt, history, incomingMessage)
+                    val duration = System.currentTimeMillis() - startTime
+                    return AiGenerationResult(
+                        reply = fallbackReply,
+                        engineUsed = "Pollinations (Fallback)",
+                        durationMs = duration,
+                        isSuccess = true,
+                        errorDetails = "Gemini: $geminiError (Auto-recovered via Pollinations)"
+                    )
+                } catch (fallbackEx: Exception) {
+                    val duration = System.currentTimeMillis() - startTime
+                    val combinedError = "Gemini: $geminiError | Fallback: ${fallbackEx.message}"
+                    Log.e(TAG, "Both Gemini and Pollinations failed: $combinedError", fallbackEx)
+                    return AiGenerationResult(
+                        reply = "",
+                        engineUsed = "Gemini -> Pollinations",
+                        durationMs = duration,
+                        isSuccess = false,
+                        errorDetails = combinedError
+                    )
+                }
             }
         } else {
-            callPollinations(systemPrompt, history, incomingMessage)
+            try {
+                val reply = callPollinations(systemPrompt, history, incomingMessage)
+                val duration = System.currentTimeMillis() - startTime
+                return AiGenerationResult(
+                    reply = reply,
+                    engineUsed = "Pollinations Free",
+                    durationMs = duration,
+                    isSuccess = true
+                )
+            } catch (e: Exception) {
+                val duration = System.currentTimeMillis() - startTime
+                val errorMsg = e.message ?: "Unknown Pollinations error"
+                Log.e(TAG, "Pollinations failed: $errorMsg", e)
+                return AiGenerationResult(
+                    reply = "",
+                    engineUsed = "Pollinations Free",
+                    durationMs = duration,
+                    isSuccess = false,
+                    errorDetails = errorMsg
+                )
+            }
         }
     }
 
     /**
      * Mode A: Free No-Key AI via Pollinations
-     * Tries OpenAI-compatible POST endpoint first, falls back to GET endpoint.
      */
     private fun callPollinations(
         systemPrompt: String,
@@ -61,15 +119,13 @@ class AiChatEngine(private val appSettings: AppSettings) {
         try {
             val messagesArray = JSONArray()
 
-            // System prompt
             val sysObj = JSONObject().apply {
                 put("role", "system")
                 put("content", systemPrompt)
             }
             messagesArray.put(sysObj)
 
-            // Multi-turn history
-            for (msg in history) {
+            for (msg in history.takeLast(10)) {
                 if (msg.content.isNotBlank()) {
                     val m = JSONObject().apply {
                         put("role", if (msg.role == "assistant") "assistant" else "user")
@@ -79,7 +135,6 @@ class AiChatEngine(private val appSettings: AppSettings) {
                 }
             }
 
-            // Current incoming message
             val curUser = JSONObject().apply {
                 put("role", "user")
                 put("content", incomingMessage)
@@ -119,7 +174,6 @@ class AiChatEngine(private val appSettings: AppSettings) {
             Log.w(TAG, "Pollinations POST failed, trying GET fallback...", e)
         }
 
-        // Fallback to GET endpoint
         return callPollinationsGetFallback(systemPrompt, history, incomingMessage)
     }
 
@@ -130,14 +184,14 @@ class AiChatEngine(private val appSettings: AppSettings) {
     ): String {
         val historyContext = buildString {
             if (history.isNotEmpty()) {
-                append("\nRecent conversation context:")
+                append("\nRecent conversation:")
                 for (h in history.takeLast(4)) {
                     val tag = if (h.role == "assistant") "Me" else "Friend"
                     append("\n$tag: ${h.content}")
                 }
                 append("\n")
             }
-            append("\nFriend's latest message: $incomingMessage\nYour natural Pakistani Roman Urdu reply:")
+            append("\nFriend: $incomingMessage\nYour natural Pakistani Roman Urdu reply:")
         }
 
         val fullPrompt = "$systemPrompt\n$historyContext"
@@ -157,12 +211,12 @@ class AiChatEngine(private val appSettings: AppSettings) {
                     return sanitizeReply(raw)
                 }
             }
-            throw IllegalStateException("Pollinations GET fallback returned HTTP ${response.code}")
+            throw IllegalStateException("Pollinations HTTP ${response.code}: ${response.message}")
         }
     }
 
     /**
-     * Mode B: Free Google Gemini Endpoint (gemini-2.5-flash)
+     * Mode B: Google Gemini Endpoint with multi-model fallback (gemini-1.5-flash -> gemini-2.0-flash)
      */
     private fun callGemini(
         apiKey: String,
@@ -170,11 +224,32 @@ class AiChatEngine(private val appSettings: AppSettings) {
         history: List<MemoryMessage>,
         incomingMessage: String
     ): String {
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey"
+        val models = listOf("gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash")
+        var lastException: Exception? = null
+
+        for (model in models) {
+            try {
+                return executeGeminiRequest(model, apiKey, systemPrompt, history, incomingMessage)
+            } catch (e: Exception) {
+                lastException = e
+                Log.w(TAG, "Gemini with model $model failed: ${e.message}, trying next model...")
+            }
+        }
+
+        throw lastException ?: IllegalStateException("All Gemini models failed")
+    }
+
+    private fun executeGeminiRequest(
+        modelName: String,
+        apiKey: String,
+        systemPrompt: String,
+        history: List<MemoryMessage>,
+        incomingMessage: String
+    ): String {
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey"
 
         val root = JSONObject()
 
-        // System Instruction
         val sysInstruction = JSONObject()
         val sysParts = JSONArray().apply {
             put(JSONObject().apply { put("text", systemPrompt) })
@@ -182,17 +257,12 @@ class AiChatEngine(private val appSettings: AppSettings) {
         sysInstruction.put("parts", sysParts)
         root.put("systemInstruction", sysInstruction)
 
-        // Contents (multi-turn)
         val contentsArray = JSONArray()
 
-        // Ensure roles alternate and first is "user"
         var lastRole: String? = null
-        for (item in history) {
+        for (item in history.takeLast(10)) {
             val geminiRole = if (item.role == "assistant") "model" else "user"
-            if (geminiRole == lastRole) {
-                // Skip back-to-back identical roles to respect Gemini schema
-                continue
-            }
+            if (geminiRole == lastRole) continue
             val contentObj = JSONObject()
             contentObj.put("role", geminiRole)
             val parts = JSONArray().apply {
@@ -203,7 +273,6 @@ class AiChatEngine(private val appSettings: AppSettings) {
             lastRole = geminiRole
         }
 
-        // Add latest user message
         val latestObj = JSONObject().apply {
             put("role", "user")
             put("parts", JSONArray().apply {
@@ -213,7 +282,6 @@ class AiChatEngine(private val appSettings: AppSettings) {
         contentsArray.put(latestObj)
         root.put("contents", contentsArray)
 
-        // Generation Config
         val genConfig = JSONObject().apply {
             put("temperature", 0.85)
             put("maxOutputTokens", 150)
@@ -228,7 +296,13 @@ class AiChatEngine(private val appSettings: AppSettings) {
         client.newCall(request).execute().use { response ->
             val body = response.body?.string()
             if (!response.isSuccessful || body.isNullOrBlank()) {
-                throw IllegalStateException("Gemini returned HTTP ${response.code}: $body")
+                val errorDetails = try {
+                    val errJson = JSONObject(body ?: "{}")
+                    errJson.optJSONObject("error")?.optString("message") ?: body
+                } catch (e: Exception) {
+                    body
+                }
+                throw IllegalStateException("Gemini ($modelName) HTTP ${response.code}: $errorDetails")
             }
 
             val json = JSONObject(body)
@@ -244,24 +318,19 @@ class AiChatEngine(private val appSettings: AppSettings) {
                     }
                 }
             }
-            throw IllegalStateException("No candidate text found in Gemini response")
+            throw IllegalStateException("No candidate text found in Gemini ($modelName) response")
         }
     }
 
-    /**
-     * Strips bot prefixes, AI prefixes, and quotes so the message looks 100% human.
-     */
     private fun sanitizeReply(raw: String): String {
         var reply = raw.trim()
 
-        // Remove surrounding quotes if model wrapped output in ""
         if ((reply.startsWith("\"") && reply.endsWith("\"")) ||
             (reply.startsWith("'") && reply.endsWith("'"))
         ) {
             reply = reply.substring(1, reply.length - 1).trim()
         }
 
-        // Remove common model prefixes
         val prefixesToRemove = listOf(
             "AI:", "Assistant:", "Dost:", "Me:", "Reply:", "Jawab:",
             "Bot:", "Live Dost:"
@@ -272,9 +341,7 @@ class AiChatEngine(private val appSettings: AppSettings) {
             }
         }
 
-        // Clean any stray markdown fences
         reply = reply.replace("```", "").trim()
-
         return reply
     }
 }

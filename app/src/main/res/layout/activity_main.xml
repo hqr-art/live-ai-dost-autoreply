@@ -16,7 +16,7 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             app:title="Live AI Dost AutoReply"
-            app:subtitle="Roman Urdu WhatsApp Companion"
+            app:subtitle="Foreground Service • Queue &amp; Retry Active"
             app:titleTextColor="#FFFFFF"
             app:subtitleTextColor="#C8E6C9" />
     </com.google.android.material.appbar.AppBarLayout>
@@ -38,7 +38,7 @@
                 android:id="@+id/cardPermission"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="12dp"
                 app:cardCornerRadius="16dp"
                 app:cardElevation="2dp"
                 app:strokeWidth="1dp"
@@ -76,6 +76,58 @@
                         android:layout_marginTop="12dp"
                         android:text="@string/btn_grant_permission"
                         app:cornerRadius="10dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Background Protection & Battery Optimization Banner -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardBatteryOpt"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardBackgroundColor="#EFF6FF"
+                app:cardCornerRadius="14dp"
+                app:strokeColor="#BFDBFE"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="12dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="🛡️ Background Execution Protection"
+                            android:textColor="#1E40AF"
+                            android:textSize="13.5sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Foreground service is running with persistent notification to prevent Android from killing replies."
+                            android:textColor="#3B82F6"
+                            android:textSize="11.5sp" />
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnBatteryOpt"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="Disable Sleep"
+                        android:textSize="11sp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -190,7 +242,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="32dp"
-                            android:text="@string/engine_gemini_sub"
+                            android:text="Uses Google Gemini 1.5 / 2.0 Flash with auto-fallback to Pollinations if quota runs out."
                             android:textColor="@color/text_secondary"
                             android:textSize="12sp" />
                     </RadioGroup>
@@ -417,7 +469,7 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Live Reply Activity Log Section -->
+            <!-- Live Reply Activity & Diagnostic Log Header -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -428,28 +480,81 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="@string/section_logs_title"
+                    android:text="Live Reply &amp; Error Logs"
                     android:textColor="@color/text_primary"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnClearHistory"
+                    android:id="@+id/btnCopyLogs"
                     style="@style/Widget.Material3.Button.TextButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Clear History"
-                    android:textColor="#D97706"
-                    android:textSize="11.5sp" />
+                    android:text="Copy Logs"
+                    android:textColor="#2563EB"
+                    android:textSize="11sp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnClearLogs"
                     style="@style/Widget.Material3.Button.TextButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Clear Logs"
+                    android:text="Clear"
                     android:textColor="#DC2626"
-                    android:textSize="11.5sp" />
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <!-- Quick Stats Counters Card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:orientation="horizontal">
+
+                <!-- Sent Chip -->
+                <TextView
+                    android:id="@+id/chipSentCount"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="#D1FAE5"
+                    android:gravity="center"
+                    android:paddingVertical="6dp"
+                    android:text="Sent: 0"
+                    android:textColor="#065F46"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <!-- Retried Chip -->
+                <TextView
+                    android:id="@+id/chipRetryCount"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="4dp"
+                    android:layout_weight="1"
+                    android:background="#FEF3C7"
+                    android:gravity="center"
+                    android:paddingVertical="6dp"
+                    android:text="Retried: 0"
+                    android:textColor="#92400E"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <!-- Failed Chip -->
+                <TextView
+                    android:id="@+id/chipFailedCount"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1"
+                    android:background="#FEE2E2"
+                    android:gravity="center"
+                    android:paddingVertical="6dp"
+                    android:text="Failed: 0"
+                    android:textColor="#991B1B"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <TextView
@@ -458,7 +563,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginVertical="24dp"
                 android:gravity="center"
-                android:text="@string/logs_empty"
+                android:text="No reply attempts yet. When messages arrive, each attempt, retry, and error will appear here live!"
                 android:textColor="@color/text_muted"
                 android:textSize="13sp" />
 
@@ -466,7 +571,7 @@
                 android:id="@+id/rvReplyLogs"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="8dp"
                 android:nestedScrollingEnabled="false"
                 tools:itemCount="3"
                 tools:listitem="@layout/item_reply_log" />

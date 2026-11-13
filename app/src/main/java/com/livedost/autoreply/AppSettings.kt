@@ -16,6 +16,7 @@ class AppSettings(context: Context) {
             "Tum mere WhatsApp par mere dost se meri jagah baat kar rahe ho. Hamesha bilkul natural, casual Pakistani Roman Urdu mein jawab do (jaise 'haan yaar', 'bhai', 'sahi hai', 'Alhamdulillah', 'kya scene hai'). Kabhi bhi mat bolna ke tum AI ya bot ho, aur kabhi 'main busy hoon' ka rata-rataya bahana mat banana. Dost jo bhi baat kare—haal chaal, mazak, padhai, cricket, WWE, ya koi sawal—bilkul ek asli dost ki tarah chote aur natural WhatsApp message (1 se 2 lines, bina kisi formal heading ya bullet points ke) mein jawab do."
 
         const val ACTION_LOGS_UPDATED = "com.livedost.autoreply.ACTION_LOGS_UPDATED"
+        private const val MAX_LOGS = 50
     }
 
     var isMasterEnabled: Boolean
@@ -71,10 +72,26 @@ class AppSettings(context: Context) {
     fun addLog(item: ReplyLogItem) {
         val current = getLogs().toMutableList()
         current.add(0, item) // Newest first
-        // Keep only the last 15 items
-        val trimmed = if (current.size > 15) current.subList(0, 15) else current
+        val trimmed = if (current.size > MAX_LOGS) current.subList(0, MAX_LOGS) else current
+        saveLogs(trimmed)
+    }
+
+    @Synchronized
+    fun updateLog(item: ReplyLogItem) {
+        val current = getLogs().toMutableList()
+        val index = current.indexOfFirst { it.id == item.id }
+        if (index != -1) {
+            current[index] = item
+        } else {
+            current.add(0, item)
+        }
+        val trimmed = if (current.size > MAX_LOGS) current.subList(0, MAX_LOGS) else current
+        saveLogs(trimmed)
+    }
+
+    private fun saveLogs(list: List<ReplyLogItem>) {
         val arr = JSONArray()
-        trimmed.forEach { arr.put(it.toJson()) }
+        list.forEach { arr.put(it.toJson()) }
         prefs.edit().putString("reply_logs_json", arr.toString()).apply()
     }
 

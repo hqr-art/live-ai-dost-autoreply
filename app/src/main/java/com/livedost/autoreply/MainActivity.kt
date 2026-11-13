@@ -1,12 +1,16 @@
 package com.livedost.autoreply
 
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
@@ -42,17 +46,23 @@ class MainActivity : AppCompatActivity() {
 
         setupRecyclerView()
         setupPermissionBanner()
+        setupBatteryOptimizationCard()
         setupMasterSwitch()
         setupAiEngineSection()
         setupPersonaSection()
         setupSafetyControls()
         setupLogActions()
+
+        // Start Foreground Service
+        startServiceIfPermitted()
     }
 
     override fun onResume() {
         super.onResume()
         updatePermissionStatus()
+        updateBatteryOptimizationStatus()
         refreshLogs()
+        startServiceIfPermitted()
 
         val filter = IntentFilter(AppSettings.ACTION_LOGS_UPDATED)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -71,6 +81,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun startServiceIfPermitted() {
+        try {
+            val serviceIntent = Intent(this, WhatsappAiService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     private fun setupRecyclerView() {
         logAdapter = ReplyLogAdapter()
         binding.rvReplyLogs.layoutManager = LinearLayoutManager(this)
@@ -84,6 +107,44 @@ class MainActivity : AppCompatActivity() {
                 startActivity(intent)
             } catch (e: Exception) {
                 Toast.makeText(this, "Could not open Notification Settings", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun setupBatteryOptimizationCard() {
+        binding.btnBatteryOpt.setOnClickListener {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                try {
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    val fallbackIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    try {
+                        startActivity(fallbackIntent)
+                    } catch (ex: Exception) {
+                        Toast.makeText(this, "Please disable Battery Saver for this app in Settings", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun updateBatteryOptimizationStatus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val isIgnored = pm.isIgnoringBatteryOptimizations(packageName)
+            if (isIgnored) {
+                binding.cardBatteryOpt.setCardBackgroundColor(Color.parseColor("#ECFDF5"))
+                binding.cardBatteryOpt.strokeColor = Color.parseColor("#A7F3D0")
+                binding.btnBatteryOpt.text = "Protected"
+                binding.btnBatteryOpt.isEnabled = false
+            } else {
+                binding.cardBatteryOpt.setCardBackgroundColor(Color.parseColor("#EFF6FF"))
+                binding.cardBatteryOpt.strokeColor = Color.parseColor("#BFDBFE")
+                binding.btnBatteryOpt.text = "Disable Sleep"
+                binding.btnBatteryOpt.isEnabled = true
             }
         }
     }
@@ -171,13 +232,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupSafetyControls() {
-        // Group chats
         binding.switchIgnoreGroups.isChecked = appSettings.ignoreGroups
         binding.switchIgnoreGroups.setOnCheckedChangeListener { _, isChecked ->
             appSettings.ignoreGroups = isChecked
         }
 
-        // Blacklist
         binding.etBlacklist.setText(appSettings.blacklist)
         binding.etBlacklist.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -187,7 +246,6 @@ class MainActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) {}
         })
 
-        // Typing delay slider
         val delay = appSettings.typingDelaySeconds
         binding.sliderDelay.value = delay.toFloat()
         binding.tvDelayValue.text = "${delay}s"
@@ -203,7 +261,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnClearLogs.setOnClickListener {
             AlertDialog.Builder(this)
                 .setTitle("Clear Live Logs")
-                .setMessage("Are you sure you want to clear the recent reply activity log?")
+                .setMessage("Clear the recent activity and error logs?")
                 .setPositiveButton("Clear") { _, _ ->
                     appSettings.clearLogs()
                     refreshLogs()
@@ -213,22 +271,43 @@ class MainActivity : AppCompatActivity() {
                 .show()
         }
 
-        binding.btnClearHistory.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle("Clear Conversation History")
-                .setMessage("This will wipe all rolling multi-turn memory for all WhatsApp contacts. Start fresh?")
-                .setPositiveButton("Wipe History") { _, _ ->
-                    memoryManager.clearAllHistory()
-                    Toast.makeText(this, "Conversation memory cleared for all contacts", Toast.LENGTH_SHORT).show()
+        binding.btnCopyLogs.setOnClickListener {
+            val logs = appSettings.getLogs()
+            if (logs.isEmpty()) {
+                Toast.makeText(this, "No logs to copy", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val logText = buildString {
+                append("=== LIVE AI DOST DIAGNOSTIC LOGS ===\n")
+                logs.forEach { log ->
+                    append("[${log.formattedTime}] Status: ${log.status} | Attempts: ${log.attempts} | Engine: ${log.engine}\n")
+                    append("Sender: ${log.sender}\n")
+                    append("Message: ${log.incomingMessage}\n")
+                    if (log.aiReply.isNotBlank()) append("Reply: ${log.aiReply}\n")
+                    if (!log.errorReason.isNullOrBlank()) append("Error Details: ${log.errorReason}\n")
+                    append("Duration: ${log.durationMs}ms\n")
+                    append("------------------------------------\n")
                 }
-                .setNegativeButton("Cancel", null)
-                .show()
+            }
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("Live AI Dost Logs", logText)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, "Logs copied to clipboard!", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun refreshLogs() {
         val logs = appSettings.getLogs()
         logAdapter.updateList(logs)
+
+        // Calculate Stats
+        val sentCount = logs.count { it.status == ReplyLogItem.STATUS_SENT }
+        val retryCount = logs.count { it.attempts > 1 }
+        val failedCount = logs.count { it.status == ReplyLogItem.STATUS_FAILED }
+
+        binding.chipSentCount.text = "Sent: $sentCount"
+        binding.chipRetryCount.text = "Retried: $retryCount"
+        binding.chipFailedCount.text = "Failed: $failedCount"
 
         if (logs.isEmpty()) {
             binding.tvLogsEmpty.visibility = View.VISIBLE
